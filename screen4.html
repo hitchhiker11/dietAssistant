@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Food Ration Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* Additional CSS if needed */
+  .grid-cell {
+    width: 100px;
+    height: 100px;
+  }
+  .btn-group-number::after {
+    content: attr(data-number);
+    font-size: 0.75rem;
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background-color: white;
+    border-radius: 9999px;
+    padding: 2px 6px;
+  }
+</style>
+</head>
+<body class="bg-gray-50 font-roboto">
+<div class="container mx-auto px-4 py-8">
+  <header class="flex justify-between items-center mb-4">
+    <a href="#" class="text-xl font-bold">Назад</a>
+    <!-- <h1 class="text-3xl font-bold">Остаток</h1> -->
+    <!-- <button class="text-xl font-bold">Сохранить</button> -->
+  </header>
+
+  <div class="flex gap-4 mb-4" id="dietPlanContainer">
+    <button class="btn-group-number relative bg-blue-200 px-4 py-2 rounded" data-number="1">М</button>
+    <button class="btn-group-number relative bg-blue-200 px-4 py-2 rounded" data-number="4">Ф</button>
+    <button class="btn-group-number relative bg-blue-200 px-4 py-2 rounded" data-number="7">О</button>
+    <button class="btn-group-number relative bg-blue-200 px-4 py-2 rounded" data-number="8">К</button>
+    <button class="btn-group-number relative bg-blue-200 px-4 py-2 rounded" data-number="5">Б</button>
+    <button class="btn-group-number relative bg-blue-200 px-4 py-2 rounded" data-number="12">Ж</button>
+  </div>
+
+  <div class="flex gap-4 mb-4" >
+    <div class="w-full">
+        <div class="overflow-auto h-64 bg-white shadow rounded">
+          <div id="productList"></div> <!-- This is where the products will be displayed -->
+
+        </div>
+      </div>
+
+  </div>
+  <h2 class="text-2xl font-bold">Текущий прием пищи:</h2>
+
+  <div class="overflow-auto h-64 bg-white shadow rounded">
+    <div id="selectedProducts" class="w-full"></div>
+  </div>
+  <button onclick="saveRationSelections()" class="bg-blue-200 px-4 py-2 rounded text-blue-600">Сохранить</button>
+
+
+  <!-- Additional content here -->
+</div>
+
+<script>
+
+document.addEventListener('DOMContentLoaded', function() {
+    const userId = 1; // Пример ID пользователя
+
+    // Загрузка формулы суточного рациона
+    fetch(`http://localhost:3000/diet-plan/${userId}`)
+    .then(response => response.json())
+    .then(dietPlanData => {
+        displayDietPlan(dietPlanData.formula);
+        console.log(dietPlanData.formula)
+    })
+    .catch(error => console.error('Error:', error));
+
+    // Загрузка списка продуктов
+    document.querySelectorAll('.btn-group-number').forEach(button => {
+        button.addEventListener('click', (event) => {
+            const macro = event.target.textContent.trim();
+            fetchProducts(macro);
+        });
+    });
+});
+
+function displayDietPlan(formula) {
+    const dietPlanContainer = document.getElementById('dietPlanContainer');
+    dietPlanContainer.innerHTML = ''; // Очищаем текущее содержимое
+
+    const components = formula.match(/([А-Я][0-9]+)/g);
+    components.forEach(component => {
+        const button = document.createElement('button');
+        button.className = 'btn-group-number relative bg-blue-200 px-4 py-2 rounded';
+        button.textContent = component.slice(0, 1); // Буква (например, "М")
+        button.dataset.number = component.slice(1); // Число (например, "2")
+
+        // Добавление обработчика клика
+         button.addEventListener('click', () => {
+            const macro = button.textContent.trim();
+            fetchProducts(macro);
+        });
+
+        dietPlanContainer.appendChild(button);
+    });
+}
+function fetchProducts(macro) {
+    fetch(`http://localhost:3000/products/${macro}`)
+    .then(response => response.json())
+    .then(products => {
+        showProducts(products);
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+function showProducts(products) {
+    const productList = document.getElementById('productList');
+    productList.innerHTML = ''; 
+
+    products.forEach(product => {
+        const productDiv = document.createElement('div');
+        productDiv.className = 'product-item';
+        productDiv.innerHTML = `
+            <span>${product.name} - ${product.mass}${product.unit}</span>
+            <button onclick="selectProduct(${product.product_id})">Выбрать</button>
+        `;
+        productList.appendChild(productDiv);
+    });
+}
+
+function selectProduct(productId) {
+  console.log(productId)
+    fetchProductById(productId).then(product => {
+        const selectedProductsDiv = document.getElementById('selectedProducts');
+        const existingProductDiv = document.getElementById(`selected-product-${productId}`);
+        if (existingProductDiv) {
+            // Если продукт уже выбран, удаляем его
+            selectedProductsDiv.removeChild(existingProductDiv);
+        } else {
+            // Если продукт не выбран, добавляем его
+            const productDiv = document.createElement('div');
+            productDiv.id = `selected-product-${productId}`;
+            productDiv.className = 'flex justify-between items-center p-2 selected-product';
+            productDiv.dataset.productId = productId;
+            productDiv.innerHTML = `
+                <span>${product.name} - ${product.mass}гр</span>
+                <div class="flex items-center">
+                    <button onclick="changePortion(${productId}, -${product.mass})" class="bg-red-200 px-2 py-1 rounded text-red-600">-</button>
+                    <input id="input-${productId}" type="text" class="mx-2 w-16 text-center border-2 border-gray-300 rounded" value="${product.mass}гр">
+                    <button onclick="changePortion(${productId}, ${product.mass})" class="bg-blue-200 px-2 py-1 rounded text-blue-600">+</button>
+                    <button onclick="removeProduct(${productId})" class="btn-group-number relative bg-blue-150 px-4 py-2 rounded">Убрать</button>
+                </div>
+            `;
+            selectedProductsDiv.appendChild(productDiv);
+        }
+    }).catch(error => console.error('Error:', error));
+}
+
+function fetchProductById(productId) {
+    return fetch(`http://localhost:3000/product/${productId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Предполагается, что сервер возвращает данные продукта напрямую
+            return data; // Вернуть объект продукта
+        })
+        .catch(error => console.error('Error fetching product:', error));
+}
+
+
+function saveRationSelections() {
+    const selectedProductsDivs = document.querySelectorAll('.selected-product');
+    const productsToSave = Array.from(selectedProductsDivs).map(div => ({
+        product_id: div.dataset.productId,
+        quantity: parseInt(div.querySelector('input').value.replace(/\D/g, '')) // Извлечение только числовой части
+    }));
+
+    fetch('http://localhost:3000/save-ration', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: 1, products: productsToSave }),
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response)
+    .then(data => console.log('Ration selections saved:', data))
+    .catch(error => console.error('Error:', error));
+}
+
+function changePortion(productId, change) {
+    fetch(`http://localhost:3000/product-mass/${productId}`)
+        .then(response => response.json())
+        .then(data => {
+            const productMass = data.mass; // Масса одной порции в граммах
+            const inputElement = document.getElementById(`input-${productId}`);
+            if (!inputElement) return;
+
+            let currentMass = parseInt(inputElement.value.replace(/[^\d]/g, ''));
+            let currentQuantityUnits = currentMass / productMass;
+
+            let newQuantityUnits = Math.max(0, currentQuantityUnits + (change / productMass));
+            inputElement.value = `${newQuantityUnits * productMass} гр`;
+
+            // Определяем группу продукта
+            const productGroup = findProductGroup(productId);
+            if (productGroup) {
+                const canAdd = updateGroupPortions(productGroup, change / productMass);
+                if (!canAdd) {
+                    // Блокируем дальнейшее добавление продуктов этой группы
+                    // Можно добавить код здесь, если требуется
+                }
+
+                // Отправляем обновленную формулу остатка на сервер
+                updateGroupPortions(productId, change / productMass);
+
+            }
+
+            fetch(`http://localhost:3000/update-portion/${productId}`, {
+                method: 'POST',
+                body: JSON.stringify({ newQuantity: newQuantityUnits }),
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response)
+            .then(data => console.log('Selected portion updated:', data))
+            .catch(error => console.error('Error:', error));
+        })
+        .catch(error => console.error('Error fetching product mass:', error));
+}
+
+function updateGroupPortions(productId, change) {
+    fetch(`http://localhost:3000/product-group/${productId}`)
+        .then(response => response.json())
+        .then(data => {
+            const group = data.group;
+            console.log(group)
+            const groupButton = document.querySelector(`button[data-group='${group}']`);
+            if (!groupButton) return;
+
+            let currentPortions = parseInt(groupButton.getAttribute('data-number'), 10);
+            let newPortions = Math.max(0, currentPortions - change);
+            groupButton.setAttribute('data-number', newPortions);
+
+            // Проверяем, если newPortions равно 0, блокируем возможность добавления продуктов этой группы
+            if (newPortions === 0) {
+                // Блокировка кнопки или другие действия
+            }
+        })
+        .catch(error => console.error('Error fetching product group:', error));
+}
+
+function removeProduct(productId) {
+    // ... (существующий код удаления продукта)
+
+    // Восстановление количества порций в группе продуктов
+    resetGroupPortions(productId);
+}
+
+function resetGroupPortions(productId) {
+    fetch(`http://localhost:3000/product-group/${productId}`)
+        .then(response => response.json())
+        .then(data => {
+            const group = data.group;
+            const groupButton = document.querySelector(`button[data-group='${group}']`);
+            if (!groupButton) return;
+
+            // Возвращаем исходное количество порций
+            groupButton.setAttribute('data-number', initialGroupPortions[group]);
+        })
+        .catch(error => console.error('Error fetching product group:', error));
+}
+
+
+function updateDietPlanFormula(userId) {
+    // Запрос на сервер для получения текущего состояния продуктов
+    return fetch(`http://localhost:3000/get-current-ration/${userId}`)
+        .then(response => response.json())
+        .then(data => {
+            let newFormula = calculateNewFormula(data.products);
+            // Отправка обновленной формулы на сервер
+            return fetch(`http://localhost:3000/update-diet-plan-formula/${userId}`, {
+                method: 'POST',
+                body: JSON.stringify({ formula: newFormula }),
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(data => data.updatedFormula);
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+
+function findProductGroup(productId) {
+    return fetch(`http://localhost:3000/product/${productId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => data.macro) // Предполагаем, что сервер возвращает 'macro' как группу продукта
+        .catch(error => console.error('Error fetching product group:', error));
+}
+
+
+
+
+
+
+
+
+  const groupPortions = {
+  'М': 1,
+  'Ф': 2,
+  'О': 5,
+  'К': 4,
+  'Б': 8,
+  'Ж': 5
+  // Add other groups as needed
+};
+
+let initialGroupPortions = {...groupPortions}; // Copy the initial state of groupPortions
+
+function updateGroupButton(group) {
+  const groupButton = document.querySelector(`.btn-group-number:contains('${group}')`);
+  if (groupButton) {
+    groupButton.setAttribute('data-number', groupPortions[group].toString());
+  }
+}
+function initializeGroupButtons() {
+  document.querySelectorAll('.btn-group-number').forEach(button => {
+    const group = button.textContent.trim();
+    if (groupPortions.hasOwnProperty(group)) {
+      button.setAttribute('data-number', groupPortions[group].toString());
+    }
+  });
+}
+
+// Call this function on page load
+// initializeGroupButtons();
+
+  // Any required JavaScript
+  // const PRODUCTS = {
+  //   'Б': [
+  //     { id: 1, name: 'Творог', mass: 50, unit: 'гр', macro: 'Б', restrictions: [], quantity: 1 },
+  //     { id: 2, name: 'Куриная грудка', mass: 30, unit: 'гр', macro: 'Б', restrictions: ['vegetarian'], quantity: 1 },
+  //     // Добавьте здесь другие белковые продукты
+  //   ],
+  //   'М': [
+  //     { id: 3, name: 'Кефир', mass: 50, unit: 'гр', macro: 'М', restrictions: [], quantity: 1 },
+  //     { id: 4, name: 'Молоко', mass: 30, unit: 'гр', macro: 'М', restrictions: ['vegetarian'], quantity: 1 },
+  //     // Добавьте здесь другие белковые продукты
+  //   ],
+  //   'Ф': [
+  //     { id: 5, name: 'Арбуз', mass: 50, unit: 'гр', macro: 'Ф', restrictions: [], quantity: 1 },
+  //     { id: 6, name: 'Дыня', mass: 30, unit: 'гр', macro: 'Ф', restrictions: ['vegetarian'], quantity: 1 },
+  //     // Добавьте здесь другие белковые продукты
+  //   ],
+  //   'О': [
+  //     { id: 7, name: 'Огурцы', mass: 50, unit: 'гр', macro: 'О', restrictions: [], quantity: 1 },
+  //     { id: 8, name: 'Помидоры', mass: 30, unit: 'гр', macro: 'О', restrictions: ['vegetarian'], quantity: 1 },
+  //     // Добавьте здесь другие белковые продукты
+  //   ],
+  //   'К': [
+  //     { id: 9, name: 'Булгур крупа', mass: 50, unit: 'гр', macro: 'К', restrictions: [], quantity: 1 },
+  //     { id: 10, name: 'Картофель', mass: 30, unit: 'гр', macro: 'К', restrictions: ['vegetarian'], quantity: 1 },
+  //     // Добавьте здесь другие белковые продукты
+  //   ],
+  //   'Ж': [
+  //     { id: 11, name: 'Авокадо', mass: 50, unit: 'гр', macro: 'Ж', restrictions: [], quantity: 1 },
+  //     { id: 12, name: 'Оливки', mass: 30, unit: 'гр', macro: 'Ж', restrictions: ['vegetarian'], quantity: 1 },
+  //     // Добавьте здесь другие белковые продукты
+  //   ],
+  //   // ... другие группы продуктов
+  // };
+
+    // JavaScript Code
+    document.querySelectorAll('.btn-group-number').forEach(button => {
+        button.addEventListener('click', (event) => {
+            const group = event.target.textContent; // Get the group from button text
+            showProducts(group);
+        });
+    });
+
+    // function showProducts(group) {
+    //     const productList = document.getElementById('productList'); // The container where products will be displayed
+    //     productList.innerHTML = ''; // Clear current list
+
+    //     const ul = document.createElement('ul');
+    //     ul.className = 'divide-y-2 divide-gray-100';
+
+    //     PRODUCTS[group].forEach(product => {
+    //         const li = document.createElement('li');
+    //         li.className = 'p-4 cursor-pointer'; // Add cursor-pointer for better UX
+    //         li.textContent = `${product.name} - ${product.mass}${product.unit}`;
+    //         li.onclick = () => selectProduct(product); // Add click event to select product
+    //         ul.appendChild(li);
+    //     });
+
+    //     productList.appendChild(ul);
+    // }
+
+    // function selectProduct(product) {
+    //     const selectedProductsDiv = document.getElementById('selectedProducts');
+    //     const existingProductDiv = document.getElementById(`selected-product-${product.id}`);
+    //     if (existingProductDiv) {
+    //         // If product is already selected, remove it
+    //         selectedProductsDiv.removeChild(existingProductDiv);
+    //     } else {
+    //         // If product is not selected, add it
+    //         const productDiv = document.createElement('div');
+    //         productDiv.id = `selected-product-${product.id}`;
+    //         productDiv.className = 'flex justify-between items-center p-2';
+    //         productDiv.innerHTML = `
+    //             <span>${product.name}:</span>
+    //             <div class="flex items-center">
+    //                 <button onclick="changePortion('${product.id}', -30)" class="bg-red-200 px-2 py-1 rounded text-red-600">-</button>
+    //                 <input id="input-${product.id}" type="text" class="mx-2 w-16 text-center border-2 border-gray-300 rounded" value="${product.mass}${product.unit}">
+    //                 <button onclick="changePortion('${product.id}', 30)" class="bg-blue-200 px-2 py-1 rounded text-blue-600">+</button>
+    //                 <button onclick="removeProduct('${product.id}')" class="btn-group-number relative bg-blue-150 px-4 py-2 rounded">Убрать</button>
+
+    //             </div>
+
+    //         `;
+    //         selectedProductsDiv.appendChild(productDiv);
+    //     }
+    // }
+
+    // function updatePortions(productId, newMass) {
+    //   let foundProduct = null;
+
+    //   for (let group in PRODUCTS) {
+    //     foundProduct = PRODUCTS[group].find(p => p.id.toString() === productId);
+    //     if (foundProduct) {
+    //       foundProduct.mass = newMass; // Update the mass
+    //       break;
+    //     }
+    //   }
+
+    //   if (!foundProduct) {
+    //     console.error('Product not found');
+    //     return;
+    //   }
+            
+    // }
+    
+    // function saveRationSelections() {
+    //   const selectedProducts = [];
+    //   // Select all product containers within the selectedProducts div
+    //   const productContainers = document.querySelectorAll('#selectedProducts > div');
+
+    //   productContainers.forEach((productDiv) => {
+    //     const productId = productDiv.id.replace('selected-product-', ''); // Extract the ID number
+    //     const quantityInput = productDiv.querySelector('input[type="text"]');
+    //     const quantity = quantityInput.value.replace('гр', '').trim(); // Remove the 'гр' unit
+
+    //     selectedProducts.push({ productId, quantity });
+    //     updatePortions(productId, quantity)
+    //   });
+      
+    //   // Now you have a populated array with the selected products and their quantities
+    //   console.log(selectedProducts);
+    //   // Implement the save logic here, such as sending to a server or storing in localStorage
+    //   localStorage.setItem('selectedProducts', JSON.stringify(selectedProducts));
+    // }
+
+    // function removeProduct(productId) {
+    //   const productDiv = document.getElementById(`selected-product-${productId}`);
+    //   productDiv.remove();
+
+    //   let productGroup = null;
+    //   for (let group in PRODUCTS) {
+    //     const index = PRODUCTS[group].findIndex(p => p.id.toString() === productId);
+    //     if (index !== -1) {
+    //       productGroup = group;
+    //       break;
+    //     }
+    //   }
+
+    //   if (!productGroup) {
+    //     console.error('Product group not found');
+    //     return;
+    //   }
+
+    //   // Reset the portion count for this group
+    //   groupPortions[productGroup] = initialGroupPortions[productGroup];
+
+      // Update the data-number attribute for the corresponding group button
+      // document.querySelectorAll('.btn-group-number').forEach(button => {
+      //   if (button.textContent.trim() === productGroup) {
+      //     button.setAttribute('data-number', groupPortions[productGroup].toString());
+      //   }
+      // });
+
+    // }
+
+    // Function to handle portion change
+    // function changePortion(productId, change) {
+    //   let productGroup = null;
+    //   for (let group in PRODUCTS) {
+    //     const product = PRODUCTS[group].find(p => p.id.toString() === productId);
+    //     if (product) {
+    //       productGroup = group;
+    //       break;
+    //     }
+    //   }
+      
+    //   if (!productGroup) {
+    //     console.error('Product group not found');
+    //     return;
+    //   }
+      
+    //   let newPortionCount = Math.max(0, Math.min(groupPortions[productGroup] + (change / 30), initialGroupPortions[productGroup]));
+    //   groupPortions[productGroup] = newPortionCount;
+
+    //   const portionChange = change / 30; // Assuming 30g per portion
+    //   // Find the correct group button by iterating and checking text content
+    //   const groupButtons = document.querySelectorAll('.btn-group-number');
+    //   groupButtons.forEach(button => {
+    //     if (button.textContent.trim() === productGroup) {
+    //       const currentPortions = parseInt(button.getAttribute('data-number'), 10);
+    //       const newPortions = Math.max(0, currentPortions - portionChange);
+    //       button.setAttribute('data-number', newPortions.toString());
+    //     }
+    //   });
+
+    //   // Update the input field
+    //   const input = document.getElementById(`input-${productId}`);
+    //   if (input) {
+    //     let currentValue = parseInt(input.value, 10);
+    //     // Calculate the new portion count, but don't exceed the max set in groupPortions
+    //     let newPortionCount = Math.min(groupPortions[productGroup], currentValue / 30 + change / 30);
+        
+    //     // Ensure the new portion count does not fall below 0
+    //     newPortionCount = Math.max(0, newPortionCount);
+
+    //     // Update the input value and the corresponding data in groupPortions
+    //     input.value = (newPortionCount * 30).toString(); // Assuming 30g per portion
+    //     groupPortions[productGroup] = newPortionCount;
+    //   }
+
+    // }
+
+    // function updateDataNumber(group, increment) {
+    //   const button = document.querySelector(`button:contains('${group}')`);
+    //   let currentNumber = parseInt(button.getAttribute('data-number'), 10);
+    //   button.setAttribute('data-number', currentNumber + increment);
+    // }
+
+    // function findProductById(productId) {
+    //     for (let group in PRODUCTS) {
+    //         const product = PRODUCTS[group].find(p => p.id.toString() === productId);
+    //         if (product) return product;
+    //     }
+    //     return null;
+    // }
+
+</script>
+</body>
+</html>
